@@ -6,7 +6,7 @@ import App from './App.vue'
 import router from './router'
 import { meStore } from './stores/me'
 import { tenantStore } from './stores/tenant'
-import { getToken } from './api'
+import { fetchCurrentTenant, getToken } from './api'
 
 async function boot() {
   if (getToken()) {
@@ -18,6 +18,16 @@ async function boot() {
   }
   if (meStore.tenant) {
     tenantStore.apply({ name: meStore.tenant.name })
+    try {
+      const tenant = await fetchCurrentTenant()
+      tenantStore.apply({
+        name: tenant.name,
+        primary_color: tenant.theme?.primary_color,
+        logo_url: tenant.theme?.logo_url ?? tenant.logo_url,
+      })
+    } catch {
+      // branding is cosmetic; the app continues with defaults
+    }
   }
 }
 

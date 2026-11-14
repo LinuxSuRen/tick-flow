@@ -1,15 +1,20 @@
 // Package router assembles the Gin engine: global middlewares, the public
-// health endpoint, and the /api groups (public, authenticated, tenant
-// scoped).
+// health endpoint, the /api groups (public, authenticated, tenant scoped)
+// and the embedded SPA.
 package router
 
 import (
 	"database/sql"
+	"io/fs"
+	"net/http"
+	"path"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/LinuxSuRen/tick-flow/internal/handler"
 	"github.com/LinuxSuRen/tick-flow/internal/middleware"
+	webfs "github.com/LinuxSuRen/tick-flow/web"
 )
 
 // Deps groups the router's collaborators.
@@ -59,8 +64,67 @@ func New(deps Deps) *gin.Engine {
 	deps.Attachment.Register(tenantAPI)
 	deps.Notification.Register(tenantAPI)
 
-	engine.NoRoute(func(c *gin.Context) {
-		c.JSON(404, gin.H{"error": gin.H{"code": "NOT_FOUND", "message": "route not found"}})
-	})
+	registerSPA(engine)
 	return engine
+}
+
+// registerSPA serves the embedded frontend: hashed assets are immutable,
+// everything else falls back to index.html for client-side routing.
+func registerSPA(engine *gin.Engine) {
+	dist, err := fs.Sub(webfs.Assets, "dist")
+	if err != nil {
+		return
+	}
+	index, indexErr := fs.ReadFile(dist, "index.html")
+
+	engine.NoRoute(func(c *gin.Context) {
+		p := c.Request.URL.Path
+		if strings.HasPrefix(p, "/api") {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{"code": "NOT_FOUND", "message": "route not found"},
+			})
+			return
+		}
+		name := strings.TrimPrefix(path.Clean("/"+p), "/")
+		if name == "" || name == "." {
+			name = "index.html"
+		}
+		data, err := fs.ReadFile(dist, name)
+		if err != nil {
+			if indexErr != nil {
+				c.String(http.StatusNotFound, "frontend not built")
+				return
+			}
+			c.Header("Cache-Control", "no-cache")
+			c.Data(http.StatusOK, "text/html; charset=utf-8", index)
+			return
+		}
+		if name == "index.html" {
+			c.Header("Cache-Control", "no-cache")
+		} else {
+			c.Header("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		c.Data(http.StatusOK, contentTypeOf(name), data)
+	})
+}
+
+func contentTypeOf(name string) string {
+	switch {
+	case strings.HasSuffix(name, ".html"):
+		return "text/html; charset=utf-8"
+	case strings.HasSuffix(name, ".css"):
+		return "text/css; charset=utf-8"
+	case strings.HasSuffix(name, ".js"):
+		return "text/javascript; charset=utf-8"
+	case strings.HasSuffix(name, ".svg"):
+		return "image/svg+xml"
+	case strings.HasSuffix(name, ".png"):
+		return "image/png"
+	case strings.HasSuffix(name, ".json"):
+		return "application/json"
+	case strings.HasSuffix(name, ".woff2"):
+		return "font/woff2"
+	default:
+		return "application/octet-stream"
+	}
 }

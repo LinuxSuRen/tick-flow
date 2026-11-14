@@ -1,6 +1,7 @@
 // Unread notification count, polled every 30s while the app is mounted.
 // The interval lives here so every layout shares one poller.
 import { reactive } from 'vue'
+import { listNotifications } from '../api'
 
 export const notificationsStore = reactive({
   unreadCount: 0,
@@ -8,9 +9,12 @@ export const notificationsStore = reactive({
   _timer: null as ReturnType<typeof setInterval> | null,
 
   async refresh() {
-    // wired to GET /api/notifications in the notification batch; the
-    // skeleton keeps the store shape so layouts can already bind to it
-    this.unreadCount = 0
+    try {
+      const page = await listNotifications(true, 1, 1)
+      this.unreadCount = page.total
+    } catch {
+      // transient errors keep the last known count; the bell keeps working
+    }
   },
 
   startPolling() {

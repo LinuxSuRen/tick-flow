@@ -5,7 +5,8 @@ import { meStore } from '../stores/me'
 import { tenantStore } from '../stores/tenant'
 import { clearToken } from '../api'
 import { notificationsStore } from '../stores/notifications'
-import { Bell, CaretBottom } from '@element-plus/icons-vue'
+import NotificationBell from './NotificationBell.vue'
+import { CaretBottom } from '@element-plus/icons-vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,17 +16,24 @@ const showConsole = computed(() => ['agent', 'tenant_admin'].includes(meStore.ro
 const showAdmin = computed(() => meStore.role === 'tenant_admin')
 
 const navs = computed(() => {
-  const items = [{ name: 'portal', label: '门户', to: '/' }]
+  const items = [
+    { name: 'portal', label: '门户', to: '/' },
+    { name: 'portal-mine', label: '我的工单', to: '/mine' },
+  ]
   if (showConsole.value) {
     items.push({ name: 'console', label: '工作台', to: '/console' })
   }
   if (showAdmin.value) {
-    items.push({ name: 'admin', label: '管理', to: '/admin' })
+    items.push({ name: 'admin', label: '管理', to: '/admin/members' })
   }
   return items
 })
 
-const area = computed(() => String(route.matched[0]?.name ?? ''))
+const area = computed(() => {
+  const matched = route.matched.map((m) => String(m.name ?? ''))
+  if (matched.includes('portal-mine') || matched.includes('portal-ticket')) return 'portal-mine'
+  return String(route.matched[0]?.name ?? '')
+})
 
 function logout() {
   clearToken()
@@ -39,7 +47,13 @@ function logout() {
   <header class="app-header">
     <div class="app-header__inner">
       <router-link class="app-header__brand" to="/">
-        <span class="app-header__logo">TF</span>
+        <img
+          v-if="tenantStore.logoUrl"
+          :src="tenantStore.logoUrl"
+          alt=""
+          class="app-header__logo-img"
+        />
+        <span v-else class="app-header__logo">TF</span>
         <span class="app-header__name">{{ tenantStore.name }}</span>
       </router-link>
       <nav class="app-header__nav">
@@ -54,9 +68,7 @@ function logout() {
         </router-link>
       </nav>
       <div class="app-header__right">
-        <el-badge :value="notificationsStore.unreadCount" :hidden="notificationsStore.unreadCount === 0" :max="99">
-          <el-icon :size="18"><Bell /></el-icon>
-        </el-badge>
+        <NotificationBell />
         <el-dropdown v-if="meStore.user" @command="logout">
           <span class="app-header__user">
             {{ meStore.user.display_name }}
@@ -110,6 +122,13 @@ function logout() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+}
+
+.app-header__logo-img {
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
 }
 
 .app-header__name {

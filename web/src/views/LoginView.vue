@@ -2,7 +2,14 @@
 import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ApiError, login, setToken, type LoginResult } from '../api'
+import {
+  ApiError,
+  login,
+  selectTenant,
+  setToken,
+  type LoginResult,
+  type TenantBrief,
+} from '../api'
 import { meStore } from '../stores/me'
 import { tenantStore } from '../stores/tenant'
 
@@ -12,6 +19,11 @@ const form = reactive({
   password: '',
 })
 const loading = ref(false)
+const tenantChoice = ref<{ visible: boolean; options: TenantBrief[] }>({
+  visible: false,
+  options: [],
+})
+const choosing = ref(false)
 
 async function submit() {
   if (!form.email || !form.password) {
@@ -21,6 +33,12 @@ async function submit() {
   loading.value = true
   try {
     const result = await login(form.email, form.password)
+    if (result.me.tenants.length > 1) {
+      // multiple tenants: let the user pick before switching the token
+      meStore.apply({ ...result.me, tenant: null })
+      tenantChoice.value = { visible: true, options: result.me.tenants }
+      return
+    }
     await afterLogin(result)
   } catch (err) {
     if (err instanceof ApiError) {
@@ -34,14 +52,36 @@ async function submit() {
 }
 
 async function afterLogin(result: LoginResult) {
+  if (!result.me.tenant) {
+    const single = result.me.tenants[0]
+    if (!single) {
+      ElMessage.error('账号尚未加入任何工作区，请联系管理员')
+      return
+    }
+    const switched = await selectTenant(single.id)
+    await settle(switched)
+    return
+  }
+  await settle(result)
+}
+
+async function settle(result: LoginResult) {
   setToken(result.token)
   meStore.apply(result.me)
   tenantStore.apply({ name: result.me.tenant?.name })
-  if (result.me.tenant) {
-    router.replace('/')
-  } else {
-    ElMessage.info('请先选择要进入的租户')
-    // tenant selection lands with the auth batch; the skeleton parks here
+  router.replace('/')
+}
+
+async function choose(t: TenantBrief) {
+  choosing.value = true
+  try {
+    const switched = await selectTenant(t.id)
+    tenantChoice.value.visible = false
+    await settle(switched)
+  } catch (err) {
+    if (err instanceof ApiError) ElMessage.error(err.message)
+  } finally {
+    choosing.value = false
   }
 }
 </script>
@@ -71,7 +111,24 @@ async function afterLogin(result: LoginResult) {
           登录
         </el-button>
       </el-form>
+      <div class="login__hint">
+        <router-link to="/setup">首次使用？前往初始化</router-link>
+      </div>
     </div>
+
+    <el-dialog v-model="tenantChoice.visible" title="选择工作区" width="360">
+      <div class="login__tenants">
+        <el-button
+          v-for="t in tenantChoice.options"
+          :key="t.id"
+          class="login__tenant"
+          :loading="choosing"
+          @click="choose(t)"
+        >
+          {{ t.name }}
+        </el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -122,5 +179,22 @@ async function afterLogin(result: LoginResult) {
 .login__submit {
   width: 100%;
   margin-top: var(--space-2);
+}
+
+.login__hint {
+  text-align: center;
+  margin-top: var(--space-4);
+  font-size: 13px;
+}
+
+.login__tenants {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.login__tenant {
+  justify-content: flex-start;
+  width: 100%;
 }
 </style>
