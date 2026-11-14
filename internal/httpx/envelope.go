@@ -5,6 +5,7 @@ package httpx
 import (
 	"database/sql"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -37,11 +38,16 @@ func Error(c *gin.Context, status int, code, message string) {
 	c.JSON(status, errorEnvelope{Error: errorBody{Code: code, Message: message}})
 }
 
-// ErrInternal writes a generic 500 without leaking internals.
+// ErrInternal writes a generic 500 without leaking internals. The cause is
+// logged server side with the request id when available.
 func ErrInternal(c *gin.Context, err error) {
 	if err != nil {
-		// logged server side; the response keeps a stable generic body
-		_ = c.Error(err)
+		c.Error(err)
+		attrs := []any{"error", err}
+		if rid := c.GetHeader("X-Request-ID"); rid != "" {
+			attrs = append(attrs, "request_id", rid)
+		}
+		slog.Error("internal error", attrs...)
 	}
 	Error(c, http.StatusInternalServerError, CodeInternalError, "internal server error")
 }

@@ -1,5 +1,5 @@
 // Command server runs the TickFlow API: config loading, structured logging,
-// database migration and the HTTP router.
+// and the assembled application.
 package main
 
 import (
@@ -11,9 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
+	"github.com/LinuxSuRen/tick-flow/internal/app"
 	"github.com/LinuxSuRen/tick-flow/internal/config"
-	"github.com/LinuxSuRen/tick-flow/internal/repository"
-	"github.com/LinuxSuRen/tick-flow/internal/router"
 	"github.com/LinuxSuRen/tick-flow/migrations"
 )
 
@@ -44,28 +45,19 @@ func run() error {
 		level = slog.LevelError
 	}
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
+	gin.SetMode(gin.ReleaseMode)
 
-	db, err := repository.Open(cfg.DBDSN)
+	a, err := app.New(*cfg, migrations.FS)
 	if err != nil {
 		return err
 	}
-	defer db.Close()
-
-	if err := repository.Migrate(db, migrations.FS); err != nil {
-		return err
-	}
+	defer a.Close()
 	slog.Info("database ready")
 
-	engine := router.New(router.Deps{
-		DB:        db,
-		JWTSecret: cfg.JWTSecret,
-	})
-
 	slog.Info("starting tickflow server", "version", version)
-
 	srv := &http.Server{
 		Addr:    cfg.Addr,
-		Handler: engine,
+		Handler: a.Engine,
 	}
 
 	srvErr := make(chan error, 1)

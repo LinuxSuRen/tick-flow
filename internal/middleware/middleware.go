@@ -138,3 +138,17 @@ func RequireRole(roles ...string) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// RequireTenant rejects tokens that carry no tenant binding (issued by
+// login before tenant selection).
+func RequireTenant() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		ac, ok := appctx.From(c.Request.Context())
+		if !ok || ac.TenantID == 0 {
+			httpx.Error(c, http.StatusUnauthorized, httpx.CodeUnauthorized, "no tenant selected")
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}

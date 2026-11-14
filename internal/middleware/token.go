@@ -37,11 +37,16 @@ func parseBearerToken(header, secret string) (*tokenClaims, error) {
 		return nil, err
 	}
 	claims, ok := token.Claims.(*tokenClaims)
-	if !ok || !token.Valid || claims.Subject == "" || claims.Role == "" || claims.Tenant == 0 {
+	if !ok || !token.Valid || claims.Subject == "" {
 		return nil, errInvalidClaims
 	}
 	sub, err := strconv.ParseInt(claims.Subject, 10, 64)
 	if err != nil || sub <= 0 {
+		return nil, errInvalidClaims
+	}
+	// Tenant 0 with an empty role marks a pre-selection login token: it may
+	// only reach /api/me and select-tenant (RequireTenant guards the rest).
+	if claims.Tenant < 0 || (claims.Tenant == 0 && claims.Role != "") {
 		return nil, errInvalidClaims
 	}
 	claims.UserID = sub

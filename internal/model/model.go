@@ -28,12 +28,20 @@ type Tenant struct {
 	UpdatedAt time.Time
 }
 
+// User account statuses: invited accounts cannot log in until they set a
+// password through the one-time invitation link.
+const (
+	UserStatusActive  = "active"
+	UserStatusInvited = "invited"
+)
+
 // User is a global account; one email may join multiple tenants.
 type User struct {
 	ID           int64
 	Email        string
 	PasswordHash string
 	DisplayName  string
+	Status       string
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

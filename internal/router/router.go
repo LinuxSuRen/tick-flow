@@ -1,5 +1,6 @@
 // Package router assembles the Gin engine: global middlewares, the public
-// health endpoint, and the /api group with its authenticated sub-groups.
+// health endpoint, and the /api groups (public, authenticated, tenant
+// scoped).
 package router
 
 import (
@@ -15,10 +16,20 @@ import (
 type Deps struct {
 	DB        *sql.DB
 	JWTSecret string
+
+	Auth         *handler.Auth
+	Tenant       *handler.Tenant
+	Member       *handler.Member
+	TicketType   *handler.TicketType
+	Ticket       *handler.Ticket
+	Timeline     *handler.Timeline
+	Attachment   *handler.Attachment
+	Notification *handler.Notification
 }
 
-// New builds the engine. Route registrations grow per implementation issue;
-// the skeleton wires the observability middlewares, healthz and the /api group.
+// New builds the engine with every route registered. Middleware chain per
+// #6: RequireAuth then RequireTenant for business routes; RequireRole on
+// top where the permission matrix demands it.
 func New(deps Deps) *gin.Engine {
 	engine := gin.New()
 	engine.Use(
@@ -30,13 +41,26 @@ func New(deps Deps) *gin.Engine {
 	(&handler.Health{DB: deps.DB}).Register(&engine.RouterGroup)
 
 	api := engine.Group("/api")
-	api.Use(middleware.RequireAuth(deps.JWTSecret))
-	{
-		// Authenticated route groups (me, tenants, ticket types, tickets,
-		// notifications, attachments) are registered by their handlers in the
-		// domain batches.
-		_ = api
-	}
 
+	// Public: setup, login and invitation acceptance.
+	deps.Auth.RegisterPublic(api.Group(""))
+
+	// Authenticated but possibly tenant-free: me and tenant selection.
+	authed := api.Group("", middleware.RequireAuth(deps.JWTSecret))
+	deps.Auth.RegisterAuthed(authed)
+
+	// Tenant scoped business routes.
+	tenantAPI := api.Group("", middleware.RequireAuth(deps.JWTSecret), middleware.RequireTenant())
+	deps.Tenant.Register(tenantAPI)
+	deps.Member.Register(tenantAPI)
+	deps.TicketType.Register(tenantAPI)
+	deps.Ticket.Register(tenantAPI)
+	deps.Timeline.Register(tenantAPI)
+	deps.Attachment.Register(tenantAPI)
+	deps.Notification.Register(tenantAPI)
+
+	engine.NoRoute(func(c *gin.Context) {
+		c.JSON(404, gin.H{"error": gin.H{"code": "NOT_FOUND", "message": "route not found"}})
+	})
 	return engine
 }

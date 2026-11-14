@@ -93,6 +93,37 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ErrorEnvelope" }
 
+  /api/auth/accept-invitation:
+    post:
+      tags: [auth]
+      summary: Activate an invited account with a fresh password
+      description: |
+        The invitation token is single-use and expiring; accounts that are
+        already active no longer match it.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "204": { description: Activated }
+        "400":
+          description: Weak password
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Invalid, expired or already used invitation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
   /api/auth/select-tenant:
     post:
       tags: [auth]
@@ -121,7 +152,7 @@ paths:
   /api/me:
     get:
       tags: [me]
-      summary: Current user, tenant and role
+      summary: Current user, tenant, role and unread notification count
       responses:
         "200":
           description: OK
@@ -606,7 +637,7 @@ paths:
       tags: [notifications]
       summary: Mark notifications read
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
@@ -615,7 +646,7 @@ paths:
                 ids:
                   type: array
                   items: { type: integer, format: int64 }
-                  description: Omit to mark everything read
+                  description: Omit the whole body or the field to mark everything read
       responses:
         "204": { description: Marked }
 
