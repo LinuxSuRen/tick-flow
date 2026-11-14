@@ -48,12 +48,10 @@ function logout() {
     <div class="app-header__inner">
       <router-link class="app-header__brand" to="/">
         <img
-          v-if="tenantStore.logoUrl"
-          :src="tenantStore.logoUrl"
-          alt=""
+          :src="tenantStore.logoUrl || '/favicon.svg'"
+          alt="logo"
           class="app-header__logo-img"
         />
-        <span v-else class="app-header__logo">TF</span>
         <span class="app-header__name">{{ tenantStore.name }}</span>
       </router-link>
       <nav class="app-header__nav">
@@ -111,24 +109,11 @@ function logout() {
   color: var(--color-text-bright);
 }
 
-.app-header__logo {
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  background: var(--color-accent-base);
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .app-header__logo-img {
   width: 26px;
   height: 26px;
   border-radius: var(--radius-sm);
-  object-fit: cover;
+  object-fit: contain;
 }
 
 .app-header__name {

@@ -53,6 +53,9 @@ async function submit() {
 <template>
   <div class="setup">
     <div class="setup__card">
+      <div class="setup__brand">
+        <img src="/favicon.svg" alt="TickFlow" class="setup__logo" />
+      </div>
       <h2 class="setup__title">欢迎使用 TickFlow</h2>
       <p class="muted">首次使用请创建工作区与管理员账号，之后此页面自动失效。</p>
       <el-alert
@@ -107,6 +110,18 @@ async function submit() {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   padding: var(--space-8) var(--space-6);
+}
+
+.setup__brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-2);
+}
+
+.setup__logo {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
 }
 
 .setup__title {

@@ -90,7 +90,7 @@ async function choose(t: TenantBrief) {
   <div class="login">
     <div class="login__card">
       <div class="login__brand">
-        <span class="login__logo">TF</span>
+        <img src="/favicon.svg" alt="TickFlow" class="login__logo" />
         <span class="login__name">TickFlow</span>
       </div>
       <el-form label-position="top" @submit.prevent="submit">
@@ -161,13 +161,7 @@ async function choose(t: TenantBrief) {
 .login__logo {
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-md);
-  background: var(--color-accent-base);
-  color: #fff;
-  font-weight: 700;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  object-fit: contain;
 }
 
 .login__name {
