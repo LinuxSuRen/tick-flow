@@ -1,0 +1,112 @@
+# 设备维修模板包（issue #19）
+slug: device-repair
+name: 设备维修
+icon: build
+
+form_schema:
+  fields:
+    - key: device_no
+      label: 设备编号
+      type: string
+      required: true
+      placeholder: 请输入设备铭牌或保修卡上的编号
+      max_length: 64
+      pattern: '^[A-Za-z0-9_-]{1,64}$'
+    - key: device_location
+      label: 设备位置
+      type: string
+      required: true
+      placeholder: 请填写设备所在位置，如 3 号楼 2 层东侧
+      max_length: 128
+    - key: fault_category
+      label: 故障分类
+      type: select
+      required: true
+      options:
+        - value: hardware
+          label: 硬件故障
+        - value: software
+          label: 软件故障
+        - value: network
+          label: 网络故障
+        - value: other
+          label: 其他
+    - key: occurred_at
+      label: 发生时间
+      type: datetime
+      required: true
+    - key: photos
+      label: 现场照片
+      type: attachments
+      max_count: 9
+
+workflow:
+  states:
+    - key: pending
+      name: 待受理
+      type: initial
+    - key: visit_scheduled
+      name: 待上门
+      type: normal
+    - key: repairing
+      name: 维修中
+      type: normal
+    - key: accepting
+      name: 待验收
+      type: normal
+    - key: closed
+      name: 已关闭
+      type: final
+  transitions:
+    - from: pending
+      action: assign
+      to: visit_scheduled
+      roles: [agent, tenant_admin]
+    - from: visit_scheduled
+      action: start
+      to: repairing
+      roles: [agent, tenant_admin]
+    - from: repairing
+      action: submit
+      to: accepting
+      roles: [agent, tenant_admin]
+    - from: accepting
+      action: accept
+      to: closed
+      roles: [creator, agent, tenant_admin]
+    - from: accepting
+      action: reject
+      to: repairing
+      roles: [creator]
+    - from: closed
+      action: reopen
+      to: pending
+      roles: [creator, tenant_admin]
+
+sla_policy:
+  first_response_minutes: 60
+  resolve_minutes: 4320
+  escalation: []
+
+assignment:
+  mode: manual
+
+view_config:
+  portal:
+    title: 设备维修
+    description: 设备出现故障需要维修，填写故障情况提交申请，工程师会尽快安排上门处理。
+    success_text: 维修申请已提交，工程师确认后会与你预约上门时间，请保持电话畅通。
+  list_columns:
+    - field: number
+    - field: title
+    - field: state
+    - field: priority
+    - field: assignee
+    - field: created_at
+    - field: device_no
+    - field: fault_category
+  detail_groups:
+    - title: 工单信息
+      fields: [number, title, content, state, priority, assignee, creator, created_at]
+    - title: 维修详情
+      fields: [device_no, device_location, fault_category, occurred_at, photos]

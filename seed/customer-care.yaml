@@ -1,0 +1,111 @@
+# 客户售后模板包（issue #19）
+slug: customer-care
+name: 客户售后
+icon: support_agent
+
+form_schema:
+  fields:
+    - key: product
+      label: 产品
+      type: select
+      required: true
+      options:
+        - value: basic
+          label: 基础版
+        - value: standard
+          label: 标准版
+        - value: professional
+          label: 专业版
+        - value: enterprise
+          label: 企业版
+    - key: order_no
+      label: 订单号
+      type: string
+      required: true
+      placeholder: 请输入购买订单上的订单号
+      max_length: 64
+      pattern: '^[A-Za-z0-9_-]{4,64}$'
+    - key: issue_type
+      label: 问题类型
+      type: select
+      required: true
+      options:
+        - value: quality
+          label: 产品质量
+        - value: usage
+          label: 使用咨询
+        - value: refund
+          label: 退换货
+        - value: other
+          label: 其他
+    - key: in_warranty
+      label: 是否在保修期内
+      type: boolean
+    - key: attachments
+      label: 附件
+      type: attachments
+      max_count: 9
+
+workflow:
+  states:
+    - key: pending
+      name: 待受理
+      type: initial
+    - key: processing
+      name: 处理中
+      type: normal
+    - key: confirming
+      name: 待客户确认
+      type: normal
+    - key: closed
+      name: 已关闭
+      type: final
+  transitions:
+    - from: pending
+      action: accept
+      to: processing
+      roles: [agent, tenant_admin]
+    - from: processing
+      action: resolve
+      to: confirming
+      roles: [agent, tenant_admin]
+    - from: confirming
+      action: confirm
+      to: closed
+      roles: [creator, agent, tenant_admin]
+    - from: confirming
+      action: reject
+      to: processing
+      roles: [creator]
+    - from: closed
+      action: reopen
+      to: pending
+      roles: [creator, tenant_admin]
+
+sla_policy:
+  first_response_minutes: 120
+  resolve_minutes: 2880
+  escalation: []
+
+assignment:
+  mode: manual
+
+view_config:
+  portal:
+    title: 客户售后
+    description: 购买产品后遇到质量、使用或退换货问题，提交售后工单，客服会尽快跟进处理。
+    success_text: 工单已提交，客服会尽快与你联系，请留意工单进度通知。
+  list_columns:
+    - field: number
+    - field: title
+    - field: state
+    - field: priority
+    - field: assignee
+    - field: created_at
+    - field: product
+    - field: issue_type
+  detail_groups:
+    - title: 工单信息
+      fields: [number, title, content, state, priority, assignee, creator, created_at]
+    - title: 售后详情
+      fields: [product, order_no, issue_type, in_warranty, attachments]

@@ -1,0 +1,100 @@
+/* Design tokens are the single style source. Tenant branding overrides the
+   accent variables at runtime (stores/tenant.ts); components never hardcode
+   brand values. */
+:root {
+  --color-bg-base: #f5f7fa;
+  --color-bg-panel: #ffffff;
+  --color-bg-elevated: #ffffff;
+  --color-bg-subtle: #f0f2f5;
+
+  --color-border-subtle: #e4e7ed;
+
+  --color-text-dim: #909399;
+  --color-text-secondary: #606266;
+  --color-text-primary: #303133;
+  --color-text-bright: #1f2329;
+
+  --color-accent-base: #3b6ef6;
+  --color-accent-hover: #5983f8;
+  --color-accent-active: #2f5bd6;
+  --color-accent-subtle: #ecf1fe;
+
+  --color-success: #67c23a;
+  --color-warning: #e6a23c;
+  --color-danger: #f56c6c;
+  --color-info: #909399;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --font-display: 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-display);
+  font-size: 14px;
+  color: var(--color-text-primary);
+  background: var(--color-bg-base);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Admin/console page skeleton: 1200px centered column of card blocks. */
+.page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+
+  &__title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--color-text-bright);
+    margin: 0 0 var(--space-4);
+  }
+}
+
+.block {
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  margin-top: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+.muted {
+  color: var(--color-text-dim);
+}
+
+a {
+  color: var(--color-accent-base);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--color-accent-hover);
+  }
+}

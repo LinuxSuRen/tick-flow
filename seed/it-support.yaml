@@ -1,0 +1,110 @@
+# IT 报障模板包（issue #19）
+slug: it-support
+name: IT 报障
+icon: laptop_mac
+
+form_schema:
+  fields:
+    - key: category
+      label: 故障分类
+      type: select
+      required: true
+      options:
+        - value: hardware
+          label: 硬件
+        - value: software
+          label: 软件
+        - value: account
+          label: 账号权限
+        - value: other
+          label: 其他
+    - key: impact_scope
+      label: 影响范围
+      type: select
+      required: true
+      options:
+        - value: single
+          label: 单人
+        - value: department
+          label: 部门
+        - value: all
+          label: 全员
+    - key: urgency
+      label: 紧急程度
+      type: select
+      required: true
+      options:
+        - value: low
+          label: 低
+        - value: normal
+          label: 普通
+        - value: high
+          label: 高
+        - value: urgent
+          label: 紧急
+    - key: description
+      label: 问题描述
+      type: textarea
+      required: true
+      placeholder: 请描述故障现象、出现时间和已经尝试过的处理办法
+      max_length: 2000
+
+workflow:
+  states:
+    - key: pending
+      name: 待受理
+      type: initial
+    - key: processing
+      name: 处理中
+      type: normal
+    - key: resolved
+      name: 已解决
+      type: normal
+    - key: closed
+      name: 已关闭
+      type: final
+  transitions:
+    - from: pending
+      action: accept
+      to: processing
+      roles: [agent, tenant_admin]
+    - from: processing
+      action: resolve
+      to: resolved
+      roles: [agent, tenant_admin]
+    - from: resolved
+      action: close
+      to: closed
+      roles: [creator, agent, tenant_admin]
+    - from: closed
+      action: reopen
+      to: pending
+      roles: [creator, tenant_admin]
+
+sla_policy:
+  first_response_minutes: 30
+  resolve_minutes: 480
+  escalation: []
+
+assignment:
+  mode: manual
+
+view_config:
+  portal:
+    title: IT 报障
+    description: 电脑、软件或账号权限出了问题，在这里提交报障，IT 支持人员会尽快处理。
+    success_text: 报障已提交，IT 支持人员会尽快联系你，可以在工单列表里随时查看处理进度。
+  list_columns:
+    - field: number
+    - field: title
+    - field: state
+    - field: priority
+    - field: assignee
+    - field: created_at
+    - field: category
+    - field: urgency
+  detail_groups:
+    - title: 工单信息
+      fields: [number, title, content, state, priority, assignee, creator, created_at]
+    - title: 报障详情
+      fields: [category, impact_scope, urgency, description]

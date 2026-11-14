@@ -1,0 +1,751 @@
+openapi: 3.0.3
+info:
+  title: TickFlow API
+  description: |
+    Multi-tenant, multi-scenario ticketing platform.
+
+    Conventions (issue #3):
+    - Fields are snake_case everywhere.
+    - Auth is `Authorization: Bearer <JWT>`; the tenant identity is bound to
+      the token and never accepted as a request parameter.
+    - Pagination requests use `page` (1-based) and `page_size`
+      (default 20, max 100); responses carry `data`, `page`, `page_size`, `total`.
+    - Non-2xx responses use the error envelope with a stable `code` and a
+      developer-facing English `message`. User-visible copy lives in the
+      frontend, not here.
+    - Timestamps are ISO 8601 UTC.
+    - Cross-tenant resource access always returns 404 NOT_FOUND.
+  version: 0.1.0
+servers:
+  - url: /
+tags:
+  - name: auth
+  - name: me
+  - name: tenants
+  - name: members
+  - name: ticket-types
+  - name: tickets
+  - name: timeline
+  - name: attachments
+  - name: notifications
+
+paths:
+  /api/auth/setup:
+    post:
+      tags: [auth]
+      summary: First boot: create the first tenant and its admin
+      description: Returns 404 once any data exists in the system.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_name, slug, admin_email, admin_password, admin_name]
+              properties:
+                tenant_name: { type: string }
+                slug: { type: string }
+                admin_email: { type: string, format: email }
+                admin_password: { type: string, minLength: 8 }
+                admin_name: { type: string }
+      responses:
+        "201":
+          description: Created; returns the login envelope
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResult" }
+        "404":
+          description: System already initialized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: Login with email and password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Token plus the joinable tenants
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResult" }
+        "401":
+          description: Bad credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/auth/accept-invitation:
+    post:
+      tags: [auth]
+      summary: Activate an invited account with a fresh password
+      description: |
+        The invitation token is single-use and expiring; accounts that are
+        already active no longer match it.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        "204": { description: Activated }
+        "400":
+          description: Weak password
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "404":
+          description: Invalid, expired or already used invitation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/auth/select-tenant:
+    post:
+      tags: [auth]
+      summary: Switch the session to another joined tenant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenant_id]
+              properties:
+                tenant_id: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Tenant-scoped token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResult" }
+        "404":
+          description: Tenant not found or not a member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/me:
+    get:
+      tags: [me]
+      summary: Current user, tenant, role and unread notification count
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DataEnvelope"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/tenants/current:
+    get:
+      tags: [tenants]
+      summary: Current tenant incl. branding
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+    patch:
+      tags: [tenants]
+      summary: Update tenant branding (tenant_admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                logo_url: { type: string }
+                theme: { type: object }
+      responses:
+        "200":
+          description: Updated tenant
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "403":
+          description: Forbidden
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/tenants/current/members:
+    get:
+      tags: [members]
+      summary: List members (tenant_admin)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageEnvelope" }
+    post:
+      tags: [members]
+      summary: Invite a member (tenant_admin)
+      description: |
+        Creates the account if needed and issues a one-time, expiring
+        set-password invitation. Without SMTP configured the invitation link
+        is written to the server log for the admin to forward.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role:
+                  type: string
+                  enum: [tenant_admin, agent, requester]
+                display_name: { type: string }
+      responses:
+        "201":
+          description: Created member (status pending until password set)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "409":
+          description: Already a member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/tenants/current/members/{id}:
+    patch:
+      tags: [members]
+      summary: Change a member role (tenant_admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [role]
+              properties:
+                role: { type: string, enum: [tenant_admin, agent, requester] }
+      responses:
+        "200":
+          description: Updated member
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    delete:
+      tags: [members]
+      summary: Remove a member (tenant_admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "204": { description: Removed }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/ticket-types:
+    get:
+      tags: [ticket-types]
+      summary: List ticket types
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageEnvelope" }
+    post:
+      tags: [ticket-types]
+      summary: Create a ticket type (tenant_admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketTypePayload" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "409":
+          description: Duplicate slug
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/ticket-types/{id}:
+    get:
+      tags: [ticket-types]
+      summary: Ticket type detail
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    put:
+      tags: [ticket-types]
+      summary: Update a ticket type (tenant_admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TicketTypePayload" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "400":
+          description: Validation failed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/ticket-types/{id}/disable:
+    post:
+      tags: [ticket-types]
+      summary: Disable or enable a ticket type (tenant_admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [enabled, disabled] }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/tickets:
+    get:
+      tags: [tickets]
+      summary: List tickets (requester sees only own)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: type
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: state
+          in: query
+          schema: { type: string }
+        - name: assignee
+          in: query
+          schema: { type: integer, format: int64 }
+        - name: priority
+          in: query
+          schema: { type: string }
+        - name: keyword
+          in: query
+          description: Matches title and ticket number
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageEnvelope" }
+    post:
+      tags: [tickets]
+      summary: Create a ticket
+      description: custom_fields are validated against the type form_schema.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ticket_type_id, title]
+              properties:
+                ticket_type_id: { type: integer, format: int64 }
+                title: { type: string, maxLength: 200 }
+                content: { type: string }
+                priority:
+                  type: string
+                  enum: [low, normal, high, urgent]
+                custom_fields: { type: object }
+      responses:
+        "201":
+          description: Created ticket
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "400":
+          description: Validation failed (field errors keyed by field)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/tickets/{id}:
+    get:
+      tags: [tickets]
+      summary: Ticket detail with type summary and available transitions
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "404":
+          description: Not found (also for cross-tenant and requester overreach)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/tickets/{id}/transitions:
+    post:
+      tags: [tickets]
+      summary: Apply a state transition by action key
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action: { type: string }
+                comment: { type: string }
+      responses:
+        "200":
+          description: Updated ticket (full resource)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "409":
+          description: Illegal transition (STATE_CONFLICT)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+        "403":
+          description: Role not permitted for this action
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/tickets/{id}/assignments:
+    post:
+      tags: [tickets]
+      summary: Assign or reassign (agent / tenant_admin)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [assignee_id]
+              properties:
+                assignee_id: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Updated ticket (full resource)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+
+  /api/tickets/{id}/comments:
+    post:
+      tags: [timeline]
+      summary: Add a reply or internal note
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string, maxLength: 16384 }
+                is_internal: { type: boolean, default: false }
+      responses:
+        "201":
+          description: Created timeline entry
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "403":
+          description: requester cannot post internal notes
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/tickets/{id}/timeline:
+    get:
+      tags: [timeline]
+      summary: Timeline ascending by created_at
+      description: internal_note entries are filtered out for requesters.
+      parameters:
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageEnvelope" }
+
+  /api/tickets/{id}/attachments:
+    post:
+      tags: [attachments]
+      summary: Upload an attachment (multipart)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                timeline_id:
+                  type: integer
+                  format: int64
+                  description: Optional timeline entry to link
+      responses:
+        "201":
+          description: Uploaded
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DataEnvelope" }
+        "400":
+          description: Too large or extension not whitelisted
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/attachments/{id}/content:
+    get:
+      tags: [attachments]
+      summary: Download an attachment (auth; tenant scoped)
+      parameters:
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: File content with Content-Disposition
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        "404":
+          description: Not found (also for cross-tenant and requester overreach)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/notifications:
+    get:
+      tags: [notifications]
+      summary: My notifications
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/pageSize"
+        - name: unread_only
+          in: query
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PageEnvelope" }
+
+  /api/notifications/read:
+    post:
+      tags: [notifications]
+      summary: Mark notifications read
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ids:
+                  type: array
+                  items: { type: integer, format: int64 }
+                  description: Omit the whole body or the field to mark everything read
+      responses:
+        "204": { description: Marked }
+
+components:
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer, format: int64 }
+    page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    pageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  schemas:
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - UNAUTHORIZED
+                - FORBIDDEN
+                - NOT_FOUND
+                - VALIDATION_FAILED
+                - STATE_CONFLICT
+                - DUPLICATED
+                - RATE_LIMITED
+                - INTERNAL_ERROR
+            message:
+              type: string
+              description: English, developer-facing
+
+    DataEnvelope:
+      type: object
+      required: [data]
+      properties:
+        data: {}
+
+    PageEnvelope:
+      type: object
+      required: [data, page, page_size, total]
+      properties:
+        data:
+          type: array
+          items: {}
+        page: { type: integer }
+        page_size: { type: integer }
+        total: { type: integer, format: int64 }
+
+    LoginResult:
+      type: object
+      required: [token, user]
+      properties:
+        token: { type: string }
+        user:
+          type: object
+          properties:
+            id: { type: integer, format: int64 }
+            email: { type: string }
+            display_name: { type: string }
+        tenant:
+          nullable: true
+          description: Present when the token is tenant-scoped (setup / select-tenant)
+          type: object
+          properties:
+            id: { type: integer, format: int64 }
+            name: { type: string }
+            role: { type: string }
+        tenants:
+          description: Joinable tenants (login only)
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer, format: int64 }
+              name: { type: string }
+              slug: { type: string }
+              role: { type: string }
+
+    TicketTypePayload:
+      type: object
+      required: [slug, name]
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        icon: { type: string }
+        form_schema: { type: object }
+        workflow: { type: object }
+        sla_policy: { type: object }
+        assignment: { type: object }
+        view_config: { type: object }
