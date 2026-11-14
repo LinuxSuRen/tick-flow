@@ -1,0 +1,21 @@
+# build outputs
+bin/
+dist/
+*.exe
+
+# local data
+data/
+config.yaml
+
+# web
+web/node_modules/
+web/dist/*
+!web/dist/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+
+# test
+*.test
+coverage.out

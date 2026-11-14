@@ -1,0 +1,9 @@
+DROP TABLE IF EXISTS notifications;
+DROP TABLE IF EXISTS attachments;
+DROP TABLE IF EXISTS ticket_timeline;
+DROP TABLE IF EXISTS tickets;
+DROP TABLE IF EXISTS ticket_sequences;
+DROP TABLE IF EXISTS ticket_types;
+DROP TABLE IF EXISTS tenant_members;
+DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS tenants;

@@ -1,0 +1,95 @@
+# 行政审批模板包（issue #19）
+# 完整审批链（顺序/会签节点）是 P2 的 workflow 节点扩展，本包先跑通单级审批。
+slug: approval
+name: 行政审批
+icon: approval
+
+form_schema:
+  fields:
+    - key: apply_type
+      label: 申请类型
+      type: select
+      required: true
+      options:
+        - value: leave
+          label: 请假
+        - value: expense
+          label: 报销
+        - value: supply
+          label: 物品领用
+    - key: start_time
+      label: 开始时间
+      type: date
+      required: true
+    - key: end_time
+      label: 结束时间
+      type: date
+      required: true
+    - key: reason
+      label: 事由
+      type: textarea
+      required: true
+      placeholder: 请简单说明申请事由
+      max_length: 500
+
+workflow:
+  states:
+    - key: pending
+      name: 待审批
+      type: initial
+    - key: approving
+      name: 审批中
+      type: normal
+    - key: approved
+      name: 已通过
+      type: final
+    - key: rejected
+      name: 已驳回
+      type: final
+  transitions:
+    - from: pending
+      action: start
+      to: approving
+      roles: [agent, tenant_admin]
+    - from: approving
+      action: approve
+      to: approved
+      roles: [agent, tenant_admin]
+    - from: approving
+      action: reject
+      to: rejected
+      roles: [agent, tenant_admin]
+    - from: approved
+      action: reopen
+      to: pending
+      roles: [creator, tenant_admin]
+    - from: rejected
+      action: reopen
+      to: pending
+      roles: [creator, tenant_admin]
+
+sla_policy:
+  first_response_minutes: 240
+  resolve_minutes: 480
+  escalation: []
+
+assignment:
+  mode: manual
+
+view_config:
+  portal:
+    title: 行政审批
+    description: 请假、报销、物品领用等申请统一在这里提交，提交后由审批人处理。
+    success_text: 申请已提交，等待审批人处理，可以在工单列表里查看审批进度。
+  list_columns:
+    - field: number
+    - field: title
+    - field: state
+    - field: creator
+    - field: created_at
+    - field: apply_type
+  detail_groups:
+    - title: 工单信息
+      fields: [number, title, content, state, creator, created_at, closed_at]
+    - title: 申请详情
+      fields: [apply_type, start_time, end_time, reason]
